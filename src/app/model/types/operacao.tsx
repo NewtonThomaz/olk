@@ -6,8 +6,8 @@ export interface OperacaoDTO {
 }
 
 export interface OperacaoRequestDTO {
+    idTalhao: string;
     operacao: string;
     agente: string;
-    dataHora: string; // ISO DateTime
-    idTalhao: string;
+    dataHora: string;
 }

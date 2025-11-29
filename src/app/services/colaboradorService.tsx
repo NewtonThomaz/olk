@@ -14,5 +14,10 @@ export const colaboradorService = {
     update: async (id: string, payload: any): Promise<any> => {
         const { data } = await api.put(`/colaboradores/${id}`, payload);
         return data;
-    }
+    },
+
+    findAll: async (): Promise<ColaboradorDTO[]> => {
+        const { data } = await api.get<ColaboradorDTO[]>('/colaboradores/');
+        return data;
+    },
 };

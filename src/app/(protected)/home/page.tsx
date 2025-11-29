@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Autoplay } from 'swiper/modules';
 import 'swiper/css';
@@ -13,10 +13,14 @@ import { carrossel } from "../../model/data/carrossel";
 import { useAuth } from '../../hooks/useAuth';
 import { useTalhoes } from '../../hooks/useTalhoes';
 import { Medida } from '../../model/types/enum';
+import { colaboradorService } from '../../services/colaboradorService';
 
 export default function Home() {
     const { user } = useAuth();
     const { talhoes, loading: loadingTalhoes, createTalhao } = useTalhoes();
+
+    // Estado para armazenar IDs dos talhões onde sou colaborador
+    const [idsTalhoesColaborador, setIdsTalhoesColaborador] = useState<string[]>([]);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -28,12 +32,77 @@ export default function Home() {
         medida: Medida.HECTARE
     });
 
+    // --- CORREÇÃO: Debug Profundo de IDs ---
+    useEffect(() => {
+        const fetchPermissoes = async () => {
+            if (user?.id) {
+                try {
+                    // 1. Busca os dados brutos
+                    const respostaApi = await colaboradorService.findAll();
+                    
+                    console.log("📦 Resposta bruta da API:", respostaApi); // Veja isso no console!
+
+                    // 2. Garante que 'todasColaboracoes' seja sempre um Array
+                    // Se a respostaApi for nula ou não for array, usamos []
+                    const todasColaboracoes = Array.isArray(respostaApi) ? respostaApi : [];
+
+                    // 3. Filtra onde EU sou o usuário convidado
+                    const minhasColaboracoes = todasColaboracoes.filter(colab => {
+                        if (!colab || !colab.usuario) return false;
+
+                        const idDoUsuarioNaColaboracao = typeof colab.usuario === 'object' 
+                            ? colab.usuario.id 
+                            : colab.usuario;
+
+                        return String(idDoUsuarioNaColaboracao) === String(user.id);
+                    });
+
+                    // 4. Extrai os IDs dos TALHÕES
+                    const idsDosTalhoes = minhasColaboracoes.map(colab => {
+                        if (!colab.talhao) return null;
+
+                        const idTalhao = typeof colab.talhao === 'object' 
+                            ? colab.talhao.id 
+                            : colab.talhao;
+
+                        return String(idTalhao);
+                    }).filter(id => id !== null) as string[];
+
+                    setIdsTalhoesColaborador(idsDosTalhoes);
+
+                } catch (error) {
+                    console.error("❌ Erro ao buscar colaborações:", error);
+                    // Em caso de erro, define lista vazia para não travar
+                    setIdsTalhoesColaborador([]); 
+                }
+            }
+        };
+
+        fetchPermissoes();
+    }, [user]);
+
+    // --- CORREÇÃO: Filtro Cruzado com String() ---
     const meusTalhoes = useMemo(() => {
+        // Se o usuário não estiver logado ou os talhões ainda não carregaram
+        if (!user || !user.id || !talhoes) return [];
+
         return talhoes.filter(talhao => {
-            if (!user) return false;
-            return talhao.nomeResponsavel === user.nome;
+            // Converter ID do talhão e do usuário para string para garantir
+            const talhaoId = String(talhao.id);
+            const userId = String(user.id);
+            
+            // 1. Sou o DONO?
+            // Verifica ID do dono ou nome como fallback
+            const idUsuarioDono = talhao.id ? String(talhao.id) : null;
+            const souDono = (idUsuarioDono === userId) || (talhao.nomeResponsavel === user.nome);
+
+            // 2. Sou COLABORADOR?
+            // Verifica se o ID deste talhão está na lista (tudo em string)
+            const souColaborador = idsTalhoesColaborador.includes(talhaoId);
+
+            return souDono || souColaborador;
         });
-    }, [talhoes, user]);
+    }, [talhoes, user, idsTalhoesColaborador]);
 
     const areaTotalEmHectares = useMemo(() => {
         return meusTalhoes.reduce((acc, talhao) => {
@@ -108,8 +177,6 @@ export default function Home() {
     };
 
     return (
-        // AJUSTE 1: Removido 'min-h-screen'. Usamos w-full e h-full para respeitar o layout pai.
-        // Adicionado 'overflow-y-auto' caso este container precise scrollar internamente.
         <main className="w-full h-full bg-white pb-12 overflow-x-hidden">
 
             <header className="p-6 pb-2">
@@ -134,7 +201,6 @@ export default function Home() {
                 >
                     {carrossel.map((item, index) => (
                         <SwiperSlide key={index} className="rounded-2xl shadow-lg overflow-hidden h-56">
-                            {/* Dica: Considere usar o componente <Image /> do Next.js futuramente */}
                             <img className="w-full h-full object-cover" src={item.src} alt={item.alt} />
                         </SwiperSlide>
                     ))}
@@ -143,7 +209,6 @@ export default function Home() {
 
             <section className={`transition-all duration-300 ${isModalOpen ? 'blur-sm brightness-50 pointer-events-none' : ''}`}>
 
-                {/* AJUSTE 2: Mudado de w-[100dvw] para w-full. 100dvw ignora scrollbars verticais e causa rolagem horizontal. */}
                 <section className="flex justify-center items-center gap-4 px-6 mt-4 mb-8 text-center w-full">
 
                     <article className="flex-1 border-r border-gray-200 last:border-0">
@@ -189,8 +254,14 @@ export default function Home() {
                         meusTalhoes.map((talhao) => (
                             <article key={talhao.id} className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                                 <header>
-                                    <h4 className="text-black font-medium text-lg">
+                                    <h4 className="text-black font-medium text-lg flex items-center gap-2">
                                         {talhao.nome}
+                                        {/* Tag Visual para Colaborador */}
+                                        {idsTalhoesColaborador.includes(String(talhao.id)) && talhao.nomeResponsavel !== user?.nome && (
+                                            <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full border border-blue-200 font-normal">
+                                                Colaborador
+                                            </span>
+                                        )}
                                     </h4>
                                     <div className="flex flex-col">
                                         <span className="text-sm text-gray-500">

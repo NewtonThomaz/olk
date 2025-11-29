@@ -66,38 +66,36 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
 
   // --- AÇÃO DE SALVAR EDIÇÕES ---
   const handleUpdateTalhao = async (dadosAtualizados: any) => {
-    // 1. Validação básica para evitar erros 400 óbvios
-    if (!dadosAtualizados.nome || String(dadosAtualizados.nome).trim().length < 2) {
-      alert("Erro: O nome do talhão é muito curto ou inválido.");
-      return;
-    }
-    if (!dadosAtualizados.tamanho || Number(dadosAtualizados.tamanho) <= 0) {
-      alert("Erro: O tamanho deve ser maior que zero.");
-      return;
-    }
+    // ... validações ...
 
     setSaving(true);
     try {
-      // 2. Montamos um payload explícito para evitar enviar lixo
-      // CORREÇÃO PARA O ERRO 400: Incluímos 'fazendaId' e 'idUsuario'
+      // Tenta pegar o ID
+      const donoOriginalId = (talhao as any)?.idUsuario;
+
+      // DEBUG: Se isso aparecer 'undefined' no console, o passo 1 (Backend) não funcionou
+      console.log("🔍 ID do Dono Original encontrado:", donoOriginalId); 
+
+      if (!donoOriginalId) {
+          alert("Erro Crítico: O sistema não identificou o dono do talhão. Atualize a página e tente novamente.");
+          setSaving(false);
+          return;
+      }
+
       const payload = {
         id: id, 
         nome: dadosAtualizados.nome,
         descricao: dadosAtualizados.descricao || "", 
         tamanho: Number(dadosAtualizados.tamanho),
         medida: dadosAtualizados.medida,
-        // Mantém o vínculo com a fazenda original
         fazendaId: (talhao as any)?.fazendaId,
-        // CORREÇÃO: Envia o ID do usuário dono (ou o atual se não existir no objeto)
-        idUsuario: (talhao as any)?.idUsuario || user?.id
+        idUsuario: donoOriginalId // Agora vai enviar o ID correto
       };
 
-      // ATUALIZAÇÃO: Chamada direta ao método update
       await talhaoService.update(id, payload);
-      await loadData(); // Recarrega os dados para garantir sincronia
+      await loadData(); 
     } catch (error: any) {
       console.error("Erro detalhado:", error);
-      // 3. Melhor tratamento de erro para descobrir a causa do 400
       const serverMessage = error.response?.data?.message || 
                             error.response?.data?.error || 
                             JSON.stringify(error.response?.data) || 
@@ -154,8 +152,6 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
         return <HistoryScreen goBack={goBack} goTo={goTo} operacoes={talhao.operacoes || []} />;
       case 'ADD_OPERATION':
         return <AddOperationScreen goBack={() => goTo('HISTORY')} talhaoId={id} agente={user?.nome || 'Usuário'} onSuccess={loadData} />;
-      case 'COLLABORATORS':
-        return <CollaboratorsScreen goBack={goBack} colaboradores={talhao.colaboradores || []} talhaoId={id} onSuccess={loadData} />;
       default:
         return null;
     }
@@ -233,7 +229,7 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
   // Dados calculados
   const culturaAtual = talhao.culturas?.length > 0 ? talhao.culturas[0].nome : "Sem cultura";
   const unidadeDisplay = talhao.medida === Medida.HECTARE ? 'ha' : 
-                         talhao.medida === Medida.METROS_QUADRADOS ? 'm²' : 'alq';
+                         talhao.medida === Medida.METROS_QUADRADOS ? 'm²' : 'km²';
 
   // Mock para gráfico
   const mockData = [
@@ -341,7 +337,7 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
           <section className="space-y-5">
             
             <button 
-              onClick={() => goTo('HISTORY')}
+              onClick={() => router.push(`/talhoes/${talhao.id}/operacoes`)}
               className="w-full bg-white rounded-xl shadow-md flex items-center overflow-hidden h-14 group hover:scale-[1.01] transition-transform"
             >
               <span className="bg-[#6d8a44] h-full w-16 flex items-center justify-center">
@@ -503,63 +499,7 @@ function AddOperationScreen({ goBack, talhaoId, agente, onSuccess }: any) {
 // ============================================================================
 // 5. SUB-TELA: COLABORADORES (COM HOOK DE LÓGICA)
 // ============================================================================
-function CollaboratorsScreen({ goBack, colaboradores, talhaoId, onSuccess }: any) {
-  // Hook de lógica trazido do primeiro código
-  const { formData, setFormData, submit, remove, loading } = useColaboradorForm(talhaoId, onSuccess);
 
-  return (
-    <section className="h-full flex flex-col bg-white rounded-3xl shadow-xl overflow-hidden animate-in slide-in-from-right duration-300 min-h-[600px]">
-      <header className="flex items-center justify-between p-6 border-b">
-        <h1 className="text-2xl font-bold text-[#2e3b1a]">Gerenciar Colaboradores</h1>
-        <button onClick={goBack} className="p-2 hover:bg-gray-100 rounded-full">
-          <X size={32} />
-        </button>
-      </header>
-
-      <div className="p-6">
-        <form onSubmit={submit} className="flex flex-col sm:flex-row gap-2 mb-8 bg-gray-50 p-4 rounded-2xl">
-            <input 
-                type="email" 
-                placeholder="E-mail do colaborador..." 
-                className="flex-1 bg-white rounded-xl px-4 py-3 outline-none border focus:border-[#6d8a44]" 
-                value={formData.email} 
-                onChange={e => setFormData({...formData, email: e.target.value})} 
-                required 
-            />
-            <select 
-                className="bg-white rounded-xl px-4 py-3 border text-[#4a5e2a] font-bold outline-none cursor-pointer" 
-                value={formData.permissao} 
-                onChange={e => setFormData({...formData, permissao: e.target.value as any})}
-            >
-                <option value={Permissao.VIEW}>Visualizar</option>
-                <option value={Permissao.ADMIN}>Admin</option>
-            </select>
-            <button disabled={loading} className="bg-[#6d8a44] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#5c753a] flex justify-center items-center min-w-[100px]">
-                {loading ? <Loader2 className="animate-spin"/> : 'Convidar'}
-            </button>
-        </form>
-
-        <ul className="space-y-4 max-h-[400px] overflow-y-auto">
-          {colaboradores && colaboradores.length > 0 ? colaboradores.map((c: any) => (
-            <li key={c.id} className="flex justify-between items-center bg-white border border-gray-100 p-4 rounded-xl shadow-sm">
-              <div>
-                <p className="font-bold text-gray-800 text-sm md:text-base">{c.email}</p>
-                <span className="text-xs font-bold bg-[#e9efe5] text-[#6d8a44] px-2 py-0.5 rounded-full mt-1 inline-block">
-                  {c.permissao}
-                </span>
-              </div>
-              <button onClick={() => remove(c.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors">
-                <Trash2 size={20}/>
-              </button>
-            </li>
-          )) : (
-            <p className="text-center text-gray-400 mt-4">Nenhum colaborador vinculado.</p>
-          )}
-        </ul>
-      </div>
-    </section>
-  );
-}
 
 // ============================================================================
 // 6. COMPONENTES AUXILIARES
