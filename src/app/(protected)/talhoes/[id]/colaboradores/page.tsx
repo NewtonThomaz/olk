@@ -9,14 +9,15 @@ import { talhaoService } from '../../../../services/talhaoService';
 import { authService } from '../../../../services/authService'; 
 import { colaboradorService } from '../../../../services/colaboradorService'; 
 import { UsuarioResponseDTO } from '../../../../model/types/auth';
-import { Permissao } from '../../../../model/types/enum';
+// Importamos os tipos. Se 'Permissao' não estiver exportada, o código usará strings literais compatíveis.
 import { ColaboradorRequestDTO } from '../../../../model/types/colaborador';
+import { Permissao } from '../../../../model/types/enum';
 import { useAuth } from '../../../../hooks/useAuth';
 
 // 1. Interface Interna Estendida para a UI
 interface Collaborator extends UsuarioResponseDTO {
   role: Permissao | any; 
-  colaboradorId?: string; 
+  colaboradorId?: string; // ID do vínculo para exclusão
 }
 
 export default function UserTeamManager({ params }: { params: Promise<{ id: string }> }) {
@@ -39,6 +40,7 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
       setLoading(true);
       const pTalhao = talhaoService.getDetalhado(talhaoId);
       
+      // Verifica se authService.getAll existe para evitar crash
       let pUsers = Promise.resolve([] as UsuarioResponseDTO[]);
       if (typeof (authService as any).getAll === 'function') {
         pUsers = (authService as any).getAll();
@@ -46,22 +48,42 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
 
       const [talhaoData, allUsersData] = await Promise.all([pTalhao, pUsers]);
       
-      // 1. Processa Colaboradores
-      const currentCollaborators = (talhaoData.colaboradores || []).map((c: any) => ({
-        id: c.id_usuario || c.usuario?.id || c.usuarioId,
-        nome: c.nome || c.usuario?.nome || c.email, 
-        email: c.email || c.usuario?.email,
-        fotoPerfil: c.foto || c.usuario?.fotoPerfil,
-        role: c.permissao || 'VIEW',
-        colaboradorId: c.id 
-      })) as Collaborator[];
+      // Identifica o ID do dono do talhão para filtrar (pode vir como objeto usuario ou idUsuario)
+      const ownerId = (talhaoData as any).usuario?.id || (talhaoData as any).idUsuario || (talhaoData as any).id_usuario;
+
+      // 1. Processa Colaboradores com Cruzamento de Dados (pelo Email)
+      // Isso garante que tenhamos o ID do usuário e a foto, mesmo se o endpoint do talhão não trouxer tudo.
+      const currentCollaborators = (talhaoData.colaboradores || []).map((c: any) => {
+        const userMatch = Array.isArray(allUsersData) 
+          ? allUsersData.find(u => u.email === c.email) 
+          : null;
+
+        return {
+          id: userMatch?.id || c.id_usuario || c.usuario?.id || c.usuarioId, // Prioriza o ID do usuário encontrado
+          nome: userMatch?.nome || c.nome || c.usuario?.nome || c.email, 
+          email: c.email || c.usuario?.email,
+          fotoPerfil: userMatch?.fotoPerfil || c.foto || c.usuario?.fotoPerfil,
+          role: (c.permissao as Permissao) || 'VIEW',
+          colaboradorId: c.id // ID do vínculo (essencial para deletar/atualizar)
+        };
+      }) as Collaborator[];
       
       setCollaborators(currentCollaborators);
 
       // 2. Processa Usuários Disponíveis
       if (Array.isArray(allUsersData)) {
-        const collaboratorUserIds = new Set(currentCollaborators.map(c => c.id));
-        const available = allUsersData.filter((u: UsuarioResponseDTO) => !collaboratorUserIds.has(u.id));
+        // Filtra removendo quem já está na lista de colaboradores (usando email como chave segura)
+        const collaboratorEmails = new Set(currentCollaborators.map(c => c.email));
+        
+        const available = allUsersData.filter((u: UsuarioResponseDTO) => {
+          // Remove se já for colaborador
+          if (collaboratorEmails.has(u.email)) return false;
+          // Remove se for o próprio dono do talhão
+          if (ownerId && u.id === ownerId) return false;
+          
+          return true;
+        });
+        
         setAvailableUsers(available);
       }
 
@@ -76,82 +98,117 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
     if (talhaoId) loadData();
   }, [talhaoId]);
 
-  // --- AÇÃO (INTEGRAÇÃO COM API) ---
-
+  // --- AÇÃO: ADICIONAR COLABORADOR ---
   const handleAddCollaborator = async (user: UsuarioResponseDTO) => {
     setActionLoading(user.id);
     try {
+      // Payload corrigido para bater com ColaboradorRequestDTO do Java
       const payload = {
-        talhao: talhaoId,
-        usuario: user.id,
-        permissao: 'VIEW' as Permissao
+        idTalhao: talhaoId,
+        email: user.email,
+        permissao: 'VIEW'
       };
 
-      console.log("➕ Tentando adicionar colaborador com payload:", payload);
+      console.log("➕ Adicionando colaborador:", payload);
 
+      // 'as any' usado para evitar conflito caso seu arquivo de tipos local esteja desatualizado
       await colaboradorService.create(payload as any);
       
-      await loadData(); 
+      await loadData(); // Recarrega as listas
       
     } catch (error: any) {
-      console.error("❌ Erro detalhado no handleAddCollaborator:", error);
+      console.error('Erro ao adicionar:', error);
 
-      // DEBUG AVANÇADO: Extrai qualquer mensagem útil do backend
-      const serverMessage = error.response?.data?.message || 
-                            error.response?.data?.error || 
-                            (typeof error.response?.data === 'object' ? JSON.stringify(error.response?.data, null, 2) : error.response?.data) || 
-                            "Sem mensagem de erro do servidor.";
-      
       const status = error.response?.status;
+      const serverData = error.response?.data;
 
-      if (status === 403) {
-        alert(`⛔ ACESSO NEGADO (403)\n\nDetalhes: ${serverMessage}\n\nO backend recusou sua permissão. Verifique se você é ADMIN/ROOT.`);
-      } else if (status === 400) {
-        alert(`⚠️ DADOS INVÁLIDOS (400)\n\nO backend rejeitou o formato enviado:\n${serverMessage}`);
+      // Tratamento de erro detalhado
+      if (status === 400 && typeof serverData === 'object') {
+         const errorMessages = Object.entries(serverData)
+            .map(([field, msg]) => `• ${msg}`)
+            .join('\n');
+         alert(`⚠️ DADOS INVÁLIDOS:\n${errorMessages}`);
+      } else if (status === 403) {
+        alert("⛔ Acesso Negado (403): Verifique suas permissões de administrador/dono.");
       } else {
-        alert(`❌ Erro ao adicionar (${status || 'N/A'}): \n${serverMessage}`);
+        const msg = serverData?.message || JSON.stringify(serverData) || 'Erro desconhecido';
+        alert(`Falha ao adicionar (${status}): ${msg}`);
       }
-
     } finally {
       setActionLoading(null);
     }
   };
 
+  // --- AÇÃO: REMOVER COLABORADOR ---
   const handleRemoveCollaborator = async (collaborator: Collaborator) => {
     if (!collaborator.colaboradorId) {
-      alert("Erro: ID do vínculo não encontrado.");
+      alert("Erro: ID do vínculo não encontrado. Recarregue a página.");
       return;
     }
 
-    if (!confirm(`Remover ${collaborator.nome} do time?`)) return;
+    // REMOVIDO: if (!confirm(`Remover ${collaborator.nome} do time?`)) return;
 
     setActionLoading(collaborator.id);
     try {
       await colaboradorService.delete(collaborator.colaboradorId);
       await loadData();
     } catch (error: any) {
-      console.error('❌ Erro detalhado no handleRemoveCollaborator:', error);
-      
-      const serverMessage = error.response?.data?.message || 
-                            error.response?.data?.error || 
-                            JSON.stringify(error.response?.data) || 
-                            "Verifique o console.";
-
-      if (error.response?.status === 403) {
-        alert(`⛔ Sem permissão para remover (403):\n${serverMessage}`);
+      console.error('Erro ao remover:', error);
+      if (error.response && error.response.status === 403) {
+        alert("⛔ Acesso Negado (403): Sem permissão para remover.");
       } else {
-        alert(`Erro ao remover: ${serverMessage}`);
+        alert('Erro ao remover colaborador.');
       }
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleRoleChange = (userId: string, newRole: string) => {
-    // Apenas visual por enquanto
+  // --- AÇÃO: ALTERAR PERMISSÃO ---
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    const roleTyped = newRole as Permissao;
+    
+    // 1. Encontra o colaborador para pegar o ID do vínculo
+    const collaborator = collaborators.find(c => c.id === userId);
+    if (!collaborator?.colaboradorId) {
+      alert("Erro: ID de vínculo não encontrado.");
+      return;
+    }
+
+    // 2. Guarda estado anterior para rollback
+    const prevCollaborators = [...collaborators];
+
+    // 3. Atualização Otimista
     setCollaborators((prev) => prev.map((c) =>
-      c.id === userId ? { ...c, role: newRole as any } : c
+      c.id === userId ? { ...c, role: roleTyped } : c
     ));
+
+    try {
+      // 4. Chama a API (Simulando estrutura da Entidade para o PUT do Java)
+      const payload = {
+        id: collaborator.colaboradorId,
+        permissao: roleTyped,
+        talhao: { id: talhaoId },
+        usuario: { id: userId } // ou colaborador.id dependendo de como mapeamos
+      };
+
+      // Cast para 'any' pois o método update pode não estar tipado no service ainda
+      await (colaboradorService as any).update(collaborator.colaboradorId, payload);
+      
+    } catch (error: any) {
+      console.error("Erro ao atualizar permissão:", error);
+      
+      const msg = error.response?.data?.message || "Falha na comunicação";
+      
+      if (error.response?.status === 403) {
+        alert("⛔ Sem permissão para alterar cargos (403).");
+      } else {
+        alert(`Erro ao salvar permissão: ${msg}`);
+      }
+
+      // Rollback
+      setCollaborators(prevCollaborators);
+    }
   };
 
   // --- FUNÇÕES VISUAIS ---
@@ -200,6 +257,7 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
+      {/* CABEÇALHO */}
       <header className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-300 shrink-0">
         <button
           onClick={() => router.back()}
@@ -211,6 +269,7 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
         <h1 className="text-gray-700 font-semibold text-lg flex-1 text-center pr-6">Gerenciar Talhão</h1>
       </header>
 
+      {/* BUSCA */}
       <form
         onSubmit={(e) => e.preventDefault()}
         className="flex items-stretch border-b border-gray-300 bg-[#f2f2f2] shrink-0"
@@ -227,6 +286,7 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
         </span>
       </form>
 
+      {/* ABAS */}
       <nav className="flex border-b border-gray-300 bg-white shrink-0">
         <button
           onClick={() => setActiveTab('users')}
@@ -256,6 +316,7 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
         </button>
       </nav>
 
+      {/* LISTA HEADER */}
       <header className="px-4 mt-3 mb-2 flex items-center shrink-0 text-gray-600">
         <span className="flex-1 font-medium text-xs uppercase tracking-wide">Usuário</span>
         {activeTab === 'collaborators' && (
@@ -267,8 +328,10 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
         <span className="w-8 flex justify-end font-medium text-xs uppercase tracking-wide text-center">Ação</span>
       </header>
 
+      {/* LISTA ROLÁVEL */}
       <ul className="overflow-y-auto flex-1 pb-24 bg-[#f2f2f2] relative z-0 no-scrollbar">
         {activeTab === 'users' ? (
+          // --- LISTA DE USUÁRIOS DISPONÍVEIS ---
           filterList(availableUsers).length > 0 ? (
             filterList(availableUsers).map((user) => (
               <li key={user.id} className="px-4 py-3 flex items-center group hover:bg-white transition-all border-b border-gray-200 last:border-0 mx-2 rounded-lg mb-1">
@@ -294,11 +357,12 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
             <li className="flex flex-col items-center justify-center h-48 text-gray-400">
               <UserX className="w-12 h-12 mb-2 opacity-30" />
               <p className="text-sm font-medium">
-                 {searchTerm ? 'Nenhum usuário encontrado.' : 'Todos os usuários já estão no time.'}
+                 {searchTerm ? 'Nenhum usuário encontrado.' : 'Todos os usuários disponíveis já estão no time.'}
               </p>
             </li>
           )
         ) : (
+          // --- LISTA DE COLABORADORES ATUAIS ---
           filterList(collaborators).length > 0 ? (
             filterList(collaborators).map((collab) => (
               <li key={collab.id} className="px-4 py-3 flex items-center group hover:bg-white transition-all border-b border-gray-200 last:border-0 mx-2 rounded-lg mb-1">
@@ -341,6 +405,7 @@ export default function UserTeamManager({ params }: { params: Promise<{ id: stri
         )}
       </ul>
 
+      {/* RODAPÉ */}
       <footer className="absolute bottom-0 w-full p-4 bg-white border-t border-gray-300 z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         <button
           onClick={() => router.back()}

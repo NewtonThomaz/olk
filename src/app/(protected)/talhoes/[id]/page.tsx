@@ -95,7 +95,6 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
       // ATUALIZAÇÃO: Chamada direta ao método update
       await talhaoService.update(id, payload);
       await loadData(); // Recarrega os dados para garantir sincronia
-      alert('Talhão atualizado com sucesso!');
     } catch (error: any) {
       console.error("Erro detalhado:", error);
       // 3. Melhor tratamento de erro para descobrir a causa do 400

@@ -9,5 +9,10 @@ export const colaboradorService = {
 
     delete: async (id: string): Promise<void> => {
         await api.delete(`/colaboradores/${id}`);
+    },
+    
+    update: async (id: string, payload: any): Promise<any> => {
+        const { data } = await api.put(`/colaboradores/${id}`, payload);
+        return data;
     }
 };
