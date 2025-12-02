@@ -4,17 +4,19 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
-        protocol: "https",
-        hostname: "randomuser.me",
+        protocol: 'http',
+        hostname: '127.0.0.1',
+        port: '8080',
+        pathname: '/uploads/**',
       },
       {
-        protocol: "https",
-        hostname: "ylmpkyumfugbrguihwxi.supabase.co",
-      },
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '8080',
+        pathname: '/uploads/**',
+      }
     ],
   },
-  
-  reactCompiler: true,
 };
 
 export default nextConfig;

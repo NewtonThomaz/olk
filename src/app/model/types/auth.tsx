@@ -20,3 +20,9 @@ export interface UsuarioResponseDTO {
   email: string;
   fotoPerfil: string;
 }
+
+export interface UpdateUserDTO {
+  nome?: string;
+  fotoPerfil?: string;
+  senha?: string;
+}

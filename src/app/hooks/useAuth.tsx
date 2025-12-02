@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authService } from '../services/authService';
-import { LoginRequestDTO, RegisterRequestDTO, UsuarioResponseDTO } from '../model/types/auth';
+import { LoginRequestDTO, RegisterRequestDTO, UsuarioResponseDTO, UpdateUserDTO } from '../model/types/auth';
 
 export function useAuth() {
   const router = useRouter();
@@ -66,7 +66,6 @@ export function useAuth() {
     setError(null);
     try {
       await authService.register(userData);
-      // alert('Conta criada com sucesso! Faça login para continuar.');
       router.push('/'); 
     } catch (err: any) {
       console.error(err);
@@ -75,6 +74,46 @@ export function useAuth() {
       } else {
         setError('Erro ao criar conta. Email ja registrado');
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Atualiza dados de texto (Nome, Senha)
+  const updateProfile = async (updateData: UpdateUserDTO) => {
+    if (!user) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const updatedUser = await authService.update(user.id, updateData);
+      setUser(updatedUser);
+      return updatedUser;
+    } catch (err: any) {
+      console.error(err);
+      setError('Erro ao atualizar perfil.');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // NOVA FUNÇÃO: Atualiza especificamente a foto enviando o arquivo bruto
+  const updatePhoto = async (file: File) => {
+    if (!user) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const updatedUser = await authService.uploadPhoto(user.id, file);
+      // Força uma atualização da URL da imagem adicionando um timestamp para evitar cache do navegador
+      if (updatedUser.fotoPerfil) {
+        updatedUser.fotoPerfil = `${updatedUser.fotoPerfil}?t=${new Date().getTime()}`;
+      }
+      setUser(updatedUser);
+      return updatedUser;
+    } catch (err: any) {
+      console.error(err);
+      setError('Erro ao fazer upload da foto.');
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -90,6 +129,8 @@ export function useAuth() {
     login,
     register,
     logout,
+    updateProfile,
+    updatePhoto, // Exportando a nova função
     user,
     loading,
     error
