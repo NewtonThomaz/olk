@@ -2,42 +2,32 @@
 
 import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  ArrowLeft, Plus, Eye, Trash2, Save, X, Loader2, Leaf 
-} from 'lucide-react';
+import { ArrowLeft, Plus, Eye, Trash2, Save, X, Loader2, Leaf } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-// --- IMPORTS DE SERVIÇOS E TIPOS (Do código lógico) ---
 import { talhaoService } from '../../../services/talhaoService';
 import { TalhaoDetalhadoDTO } from '../../../model/types/talhao'; 
 import { Permissao, Medida } from '../../../model/types/enum';
 import { useAuth } from '../../../hooks/useAuth';
 
-// --- HOOKS DE LÓGICA (Do código lógico) ---
 import { useOperacaoForm } from '../../../hooks/useOperacaoForm';
 import { useColaboradorForm } from '../../../hooks/useColaboradorForm';
 
-// --- IMPORTS DE MODAIS ---
 import NewCultureModal from '../../../components/cultura'; 
 import SensorModal from '../../../components/sensor';
 
-// ============================================================================
-// 1. COMPONENTE PAI (CONTROLADOR DE TELAS + LÓGICA DE DADOS)
-// ============================================================================
 export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ id: string }> }) {
+  
   const { id } = use(params);
   const router = useRouter();
   const { user } = useAuth();
 
-  // --- ESTADOS DE DADOS REAIS ---
   const [talhao, setTalhao] = useState<TalhaoDetalhadoDTO | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false); // Estado para loading do botão salvar
+  const [saving, setSaving] = useState(false);
   
-  // --- ESTADOS DE NAVEGAÇÃO ---
   const [currentScreen, setCurrentScreen] = useState<'MAIN' | 'HISTORY' | 'COLLABORATORS' | 'ADD_OPERATION'>('MAIN');
 
-  // --- ESTADOS DE MODAIS ---
   const [isCultureModalOpen, setIsCultureModalOpen] = useState(false);
   const [sensorModalState, setSensorModalState] = useState<{
     isOpen: boolean;
@@ -46,7 +36,6 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // --- LÓGICA DE CARREGAMENTO (API) ---
   const loadData = async () => {
     try {
       const data = await talhaoService.getDetalhado(id);
@@ -54,7 +43,7 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
     } catch (err) {
       console.error(err);
       alert("Erro ao carregar dados do talhão.");
-      router.push('/home'); // Redireciona se falhar
+      router.push('/home');
     } finally {
       setLoading(false);
     }
@@ -64,16 +53,11 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
     loadData();
   }, [id]);
 
-  // --- AÇÃO DE SALVAR EDIÇÕES ---
   const handleUpdateTalhao = async (dadosAtualizados: any) => {
-    // ... validações ...
 
     setSaving(true);
     try {
-      // Tenta pegar o ID
       const donoOriginalId = (talhao as any)?.idUsuario;
-
-      // DEBUG: Se isso aparecer 'undefined' no console, o passo 1 (Backend) não funcionou
       console.log("🔍 ID do Dono Original encontrado:", donoOriginalId); 
 
       if (!donoOriginalId) {
@@ -89,7 +73,7 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
         tamanho: Number(dadosAtualizados.tamanho),
         medida: dadosAtualizados.medida,
         fazendaId: (talhao as any)?.fazendaId,
-        idUsuario: donoOriginalId // Agora vai enviar o ID correto
+        idUsuario: donoOriginalId
       };
 
       await talhaoService.update(id, payload);
@@ -106,7 +90,6 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
     }
   };
 
-  // --- AÇÃO DE EXCLUIR ---
   const handleDeleteTalhao = async () => {
     try {
       await talhaoService.delete(id);
@@ -117,11 +100,9 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
     }
   };
 
-  // --- FUNÇÕES DE NAVEGAÇÃO ---
   const goTo = (screen: any) => setCurrentScreen(screen);
   const goBack = () => setCurrentScreen('MAIN');
 
-  // Loader enquanto busca na API
   if (loading) {
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -132,7 +113,6 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
 
   if (!talhao) return null;
 
-  // --- ROTEADOR DE TELAS ---
   const renderScreen = () => {
     switch (currentScreen) {
       case 'MAIN':
@@ -157,13 +137,15 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
     }
   };
 
+  // Lógica para pegar a cultura atual (se existir) para passar para o modal
+  const culturaObjeto = talhao.culturas && talhao.culturas.length > 0 ? talhao.culturas[0] : null;
+
   return (
     <main className="min-h-[calc(100vh-5rem)] bg-gray-50 flex justify-center py-8 px-4 font-sans relative">
       <section className="w-full max-w-lg md:max-w-5xl">
         
         {renderScreen()}
 
-        {/* POPUP DE EXCLUSÃO */}
         {showDeleteConfirm && (
           <DeleteConfirmationPopup 
             onCancel={() => setShowDeleteConfirm(false)} 
@@ -171,12 +153,13 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
           />
         )}
 
-        {/* MODAIS GLOBAIS */}
+        {/* Atualizado para passar a cultura atual */}
         <NewCultureModal 
           isOpen={isCultureModalOpen} 
           onClose={() => setIsCultureModalOpen(false)} 
           talhaoId={id} 
-          onSuccess={loadData} // Recarrega dados ao salvar cultura
+          onSuccess={loadData}
+          culturaAtual={culturaObjeto}
         />
 
         <SensorModal
@@ -184,7 +167,7 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
           type={sensorModalState.type}
           onClose={() => setSensorModalState({ ...sensorModalState, isOpen: false })}
           talhaoId={id}
-          onSuccess={loadData} // Recarrega dados ao salvar sensor
+          onSuccess={loadData}
         />
 
       </section>
@@ -192,20 +175,15 @@ export default function TalhaoDetailRefatorado({ params }: { params: Promise<{ i
   );
 }
 
-// ============================================================================
-// 2. TELA PRINCIPAL (VISUAL NOVO + DADOS REAIS + EDIÇÃO)
-// ============================================================================
 function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, openSensorModal, setShowDeleteConfirm }: any) {
   
-  // Estado local para gerenciar o formulário de edição
   const [formData, setFormData] = useState({
     nome: talhao.nome || '',
     descricao: talhao.descricao || '',
     tamanho: talhao.tamanho || 0,
-    medida: talhao.medida // Mantém a medida original por enquanto
+    medida: talhao.medida
   });
 
-  // Atualiza o formulário se os dados do talhão mudarem (ex: após loadData)
   useEffect(() => {
     setFormData({
       nome: talhao.nome || '',
@@ -226,12 +204,10 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
   const [showTempGraph, setShowTempGraph] = useState(true);
   const [showHumidityGraph, setShowHumidityGraph] = useState(true);
 
-  // Dados calculados
   const culturaAtual = talhao.culturas?.length > 0 ? talhao.culturas[0].nome : "Sem cultura";
   const unidadeDisplay = talhao.medida === Medida.HECTARE ? 'ha' : 
-                         talhao.medida === Medida.METROS_QUADRADOS ? 'm²' : 'km²';
+                          talhao.medida === Medida.METROS_QUADRADOS ? 'm²' : 'km²';
 
-  // Mock para gráfico
   const mockData = [
     { dia: 'Seg', valor: 24 }, { dia: 'Ter', valor: 26 }, { dia: 'Qua', valor: 22 },
     { dia: 'Qui', valor: 28 }, { dia: 'Sex', valor: 25 },
@@ -247,9 +223,7 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
 
         <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* COLUNA ESQUERDA */}
           <section className="space-y-5">
-            {/* Campo Nome */}
             <section className="bg-white rounded-2xl shadow-md p-5 focus-within:ring-2 focus-within:ring-[#6d8a44] transition-all">
               <label htmlFor="nome" className="text-sm font-bold text-gray-800 mb-1 block">Nome do Talhão</label>
               <input 
@@ -262,7 +236,6 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
               />
             </section>
 
-            {/* Campo Descrição */}
             <article className="bg-white rounded-2xl shadow-md p-5 min-h-[150px] focus-within:ring-2 focus-within:ring-[#6d8a44] transition-all">
               <label htmlFor="descricao" className="text-sm font-bold text-gray-800 mb-2 block">Descrição</label>
               <textarea 
@@ -277,38 +250,33 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
             </article>
 
             <section className="grid grid-cols-3 gap-3">
-              {/* Campo Tamanho */}
               <article 
                 className="bg-white rounded-2xl shadow-md p-2 flex flex-col items-center justify-between aspect-square focus-within:ring-2 focus-within:ring-[#6d8a44] transition-all group cursor-text hover:shadow-lg"
                 onClick={() => document.getElementById('tamanho')?.focus()}
               >
-                {/* ALTERAÇÃO: Título com cor mais viva (verde escuro do tema) */}
                 <label htmlFor="tamanho" className="text-[11px] font-bold text-[#4a5e2a] uppercase tracking-widest mt-2">
                   TAMANHO
                 </label>
                 
                 <div className="flex-1 flex items-center justify-center w-full">
                   <input 
-                     id="tamanho"
-                     name="tamanho"
-                     type="number"
-                     value={formData.tamanho}
-                     onChange={handleChange}
-                     className="w-full text-4xl font-bold text-[#6d8a44] text-center bg-transparent outline-none border-none p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-green-200"
+                      id="tamanho"
+                      name="tamanho"
+                      type="number"
+                      value={formData.tamanho}
+                      onChange={handleChange}
+                      className="w-full text-4xl font-bold text-[#6d8a44] text-center bg-transparent outline-none border-none p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-green-200"
                   />
                 </div>
                 
-                {/* ALTERAÇÃO: Unidade com cor mais viva */}
                 <span className="text-[10px] text-[#4a5e2a] font-bold mb-2 uppercase">
                   {unidadeDisplay}
                 </span>
               </article>
 
               <article className="bg-white rounded-2xl shadow-md p-3 flex flex-col items-center justify-between aspect-square group hover:shadow-lg transition-all">
-                {/* Título mais vivo */}
                 <h3 className="text-[11px] font-bold text-[#4a5e2a] uppercase tracking-widest mt-1">Equipe</h3>
                 <span className="text-3xl font-bold text-[#6d8a44]">{talhao.colaboradores?.length || 0}</span>
-                {/* Botão revertido para 'gerenciar' */}
                 <button 
                   onClick={() => router.push(`/talhoes/${talhao.id}/colaboradores`)}
                   className="flex items-center gap-1 border border-[#6d8a44] text-[#6d8a44] px-2 py-1 rounded-full text-[10px] font-bold hover:bg-[#6d8a44] hover:text-white transition-all uppercase"
@@ -321,7 +289,6 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
                 onClick={openCultureModal}
                 className="bg-white rounded-2xl shadow-md p-3 flex flex-col items-center justify-between aspect-square hover:bg-gray-50 cursor-pointer border-2 border-transparent hover:border-[#6d8a44]/20 transition-all group hover:shadow-lg"
               >
-                {/* Título mais vivo */}
                 <h3 className="text-[11px] font-bold text-[#4a5e2a] uppercase tracking-widest mt-1">Cultura</h3>
                 <span className="text-lg font-bold text-[#6d8a44] truncate w-full text-center px-1">
                   {culturaAtual}
@@ -333,7 +300,6 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
             </section>
           </section>
 
-          {/* COLUNA DIREITA */}
           <section className="space-y-5">
             
             <button 
@@ -349,8 +315,6 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
             </button>
 
             <h2 className="text-lg font-bold text-black">Sensores</h2>
-
-            {/* SENSOR TEMPERATURA */}
             <SensorCard 
               label="Temperatura" 
               showGraph={showTempGraph} 
@@ -361,7 +325,6 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
               onEdit={() => openSensorModal('TEMPERATURA')}
             />
 
-            {/* SENSOR UMIDADE */}
             <SensorCard 
               label="Umidade" 
               showGraph={showHumidityGraph} 
@@ -394,9 +357,6 @@ function MainScreen({ talhao, onSave, isSaving, goTo, router, openCultureModal, 
   );
 }
 
-// ============================================================================
-// 3. SUB-TELA: HISTÓRICO (COM DADOS REAIS)
-// ============================================================================
 function HistoryScreen({ goBack, goTo, operacoes }: any) {
   return (
     <section className="h-full flex flex-col bg-white rounded-3xl shadow-xl overflow-hidden animate-in slide-in-from-right duration-300 min-h-[600px]">
@@ -449,56 +409,52 @@ function AddOperationScreen({ goBack, talhaoId, agente, onSuccess }: any) {
            <h1 className="text-2xl font-bold text-[#2e3b1a] mb-8 text-center">Nova Operação</h1>
            
            <form onSubmit={submit} className="space-y-6">
-              <div>
-                <label className="font-bold text-[#4a5e2a] block mb-2">Data e Hora</label>
-                <input 
-                  type="datetime-local" 
-                  className="w-full border rounded-2xl p-4 outline-none focus:border-[#4a5e2a] bg-gray-50"
-                  value={formData.dataHora} 
-                  onChange={e => setFormData({...formData, dataHora: e.target.value})} 
-                  required 
-                />
-              </div>
+             <div>
+               <label className="font-bold text-[#4a5e2a] block mb-2">Data e Hora</label>
+               <input 
+                 type="datetime-local" 
+                 className="w-full border rounded-2xl p-4 outline-none focus:border-[#4a5e2a] bg-gray-50"
+                 value={formData.dataHora} 
+                 onChange={e => setFormData({...formData, dataHora: e.target.value})} 
+                 required 
+               />
+             </div>
 
-              <div>
-                <label className="font-bold text-[#4a5e2a] block mb-2">Descrição da Ação</label>
-                <input 
-                  type="text" 
-                  className="w-full border rounded-2xl p-4 outline-none focus:border-[#4a5e2a] bg-gray-50" 
-                  placeholder="Ex: Pulverização, Colheita..."
-                  value={formData.operacao} 
-                  onChange={e => setFormData({...formData, operacao: e.target.value})} 
-                  required 
-                />
-              </div>
+             <div>
+               <label className="font-bold text-[#4a5e2a] block mb-2">Descrição da Ação</label>
+               <input 
+                 type="text" 
+                 className="w-full border rounded-2xl p-4 outline-none focus:border-[#4a5e2a] bg-gray-50" 
+                 placeholder="Ex: Pulverização, Colheita..."
+                 value={formData.operacao} 
+                 onChange={e => setFormData({...formData, operacao: e.target.value})} 
+                 required 
+               />
+             </div>
 
-              <div>
-                <label className="font-bold text-[#4a5e2a] block mb-2">Responsável</label>
-                <input 
-                  type="text" 
-                  className="w-full border rounded-2xl p-4 bg-gray-200 text-gray-500 cursor-not-allowed"
-                  value={formData.agente} 
-                  disabled 
-                />
-              </div>
+             <div>
+               <label className="font-bold text-[#4a5e2a] block mb-2">Responsável</label>
+               <input 
+                 type="text" 
+                 className="w-full border rounded-2xl p-4 bg-gray-200 text-gray-500 cursor-not-allowed"
+                 value={formData.agente} 
+                 disabled 
+               />
+             </div>
 
-              <div className="flex gap-4 pt-4">
+             <div className="flex gap-4 pt-4">
                  <button type="button" onClick={goBack} className="flex-1 border-2 border-[#4a5e2a] text-[#4a5e2a] py-3 rounded-2xl font-bold hover:bg-gray-50">
-                    Cancelar
+                   Cancelar
                  </button>
                  <button type="submit" disabled={loading} className="flex-1 bg-[#7d9d42] text-white py-3 rounded-2xl font-bold disabled:opacity-70 hover:bg-[#688337] flex justify-center items-center">
-                    {loading ? <Loader2 className="animate-spin" /> : 'Salvar Registro'}
+                   {loading ? <Loader2 className="animate-spin" /> : 'Salvar Registro'}
                  </button>
-              </div>
+             </div>
            </form>
        </div>
     </section>
   );
 }
-
-// ============================================================================
-// 5. SUB-TELA: COLABORADORES (COM HOOK DE LÓGICA)
-// ============================================================================
 
 
 // ============================================================================
@@ -553,7 +509,7 @@ function DeleteConfirmationPopup({ onCancel, onConfirm }: any) {
        <div className="bg-white rounded-[2rem] p-8 shadow-2xl w-full max-w-sm flex flex-col items-center border border-gray-100">
          <h2 className="text-[#2e3b1a] text-2xl font-bold mb-4">Excluir Talhão</h2>
          <p className="text-sm font-medium text-gray-600 mb-8 px-4 text-center">
-            Tem certeza? <br/><span className="text-red-500 font-bold">Esta ação é irreversível.</span>
+           Tem certeza? <br/><span className="text-red-500 font-bold">Esta ação é irreversível.</span>
          </p>
          <div className="flex gap-4 w-full">
              <button onClick={onCancel} className="flex-1 border-2 border-[#7d9d42] text-[#7d9d42] py-3 rounded-xl font-bold hover:bg-green-50">Cancelar</button>

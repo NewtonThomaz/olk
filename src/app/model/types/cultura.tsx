@@ -6,6 +6,10 @@ export interface CulturaDTO {
 
 export interface CulturaRequestDTO {
     nome: string;
-    data: string;
-    idTalhao: string;
+    usuario: {
+        id: string;
+    };
+    talhoes: {
+        id: string;
+    }[];
 }

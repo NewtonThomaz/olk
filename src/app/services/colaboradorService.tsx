@@ -19,5 +19,5 @@ export const colaboradorService = {
     findAll: async (): Promise<ColaboradorDTO[]> => {
         const { data } = await api.get<ColaboradorDTO[]>('/colaboradores/');
         return data;
-    },
+    }
 };

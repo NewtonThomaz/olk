@@ -39,7 +39,7 @@ export default function Home() {
                 try {
                     // 1. Busca os dados brutos
                     const respostaApi = await colaboradorService.findAll();
-                    
+
                     console.log("📦 Resposta bruta da API:", respostaApi); // Veja isso no console!
 
                     // 2. Garante que 'todasColaboracoes' seja sempre um Array
@@ -50,8 +50,8 @@ export default function Home() {
                     const minhasColaboracoes = todasColaboracoes.filter(colab => {
                         if (!colab || !colab.usuario) return false;
 
-                        const idDoUsuarioNaColaboracao = typeof colab.usuario === 'object' 
-                            ? colab.usuario.id 
+                        const idDoUsuarioNaColaboracao = typeof colab.usuario === 'object'
+                            ? colab.usuario.id
                             : colab.usuario;
 
                         return String(idDoUsuarioNaColaboracao) === String(user.id);
@@ -61,8 +61,8 @@ export default function Home() {
                     const idsDosTalhoes = minhasColaboracoes.map(colab => {
                         if (!colab.talhao) return null;
 
-                        const idTalhao = typeof colab.talhao === 'object' 
-                            ? colab.talhao.id 
+                        const idTalhao = typeof colab.talhao === 'object'
+                            ? colab.talhao.id
                             : colab.talhao;
 
                         return String(idTalhao);
@@ -73,7 +73,7 @@ export default function Home() {
                 } catch (error) {
                     console.error("❌ Erro ao buscar colaborações:", error);
                     // Em caso de erro, define lista vazia para não travar
-                    setIdsTalhoesColaborador([]); 
+                    setIdsTalhoesColaborador([]);
                 }
             }
         };
@@ -83,26 +83,49 @@ export default function Home() {
 
     // --- CORREÇÃO: Filtro Cruzado com String() ---
     const meusTalhoes = useMemo(() => {
-        // Se o usuário não estiver logado ou os talhões ainda não carregaram
-        if (!user || !user.id || !talhoes) return [];
+    // 1. Verificações de segurança (Safety Checks)
+    // Se o usuário não carregou, não tem ID, ou a lista de talhões é nula/undefined
+    if (!user || !user.id || !talhoes) return [];
 
-        return talhoes.filter(talhao => {
-            // Converter ID do talhão e do usuário para string para garantir
-            const talhaoId = String(talhao.id);
-            const userId = String(user.id);
-            
-            // 1. Sou o DONO?
-            // Verifica ID do dono ou nome como fallback
-            const idUsuarioDono = talhao.id ? String(talhao.id) : null;
-            const souDono = (idUsuarioDono === userId) || (talhao.nomeResponsavel === user.nome);
+    // 2. Normaliza o ID do usuário logado para string
+    // (Importante caso um venha como número e outro como texto)
+    const userIdLogado = String(user.id);
 
-            // 2. Sou COLABORADOR?
-            // Verifica se o ID deste talhão está na lista (tudo em string)
-            const souColaborador = idsTalhoesColaborador.includes(talhaoId);
+    return talhoes.filter(talhao => {
+        // Normaliza o ID do talhão atual
+        const talhaoId = String(talhao.id);
 
-            return souDono || souColaborador;
-        });
-    }, [talhoes, user, idsTalhoesColaborador]);
+        // ---------------------------------------------------------
+        // LÓGICA 1: SOU O DONO?
+        // ---------------------------------------------------------
+        
+        // Pega o ID do dono que agora vem no JSON (TalhaoResponseDTO)
+        const idDonoTalhao = talhao.id ? String(talhao.id) : null;
+
+        // Comparação Principal: ID do Logado vs ID do Dono do Talhão
+        const souDonoPeloId = idDonoTalhao === userIdLogado;
+
+        // Comparação Secundária (Fallback): Pelo nome (caso o ID falhe por algum motivo raro)
+        const souDonoPeloNome = talhao.nomeResponsavel === user.nome;
+
+        const souDono = souDonoPeloId || souDonoPeloNome;
+
+        // ---------------------------------------------------------
+        // LÓGICA 2: SOU COLABORADOR?
+        // ---------------------------------------------------------
+        
+        // Verifica se o ID deste talhão está na lista de IDs que você tem permissão
+        // (A lista idsTalhoesColaborador deve ser um array de strings)
+        const souColaborador = idsTalhoesColaborador.includes(talhaoId);
+
+        // ---------------------------------------------------------
+        // RESULTADO FINAL
+        // ---------------------------------------------------------
+        // O talhão aparece se você for o Dono OU se for Colaborador
+        return souDono || souColaborador;
+    });
+
+}, [talhoes, user, idsTalhoesColaborador]);
 
     const areaTotalEmHectares = useMemo(() => {
         return meusTalhoes.reduce((acc, talhao) => {
