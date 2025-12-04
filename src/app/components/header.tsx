@@ -69,6 +69,7 @@ export default function Header() {
                                 href={link.href}
                                 className="text-gray-600 font-medium hover:text-[#6d9138] transition-colors text-base flex items-center gap-2"
                             >
+                                {link.icon}
                                 {link.name}
                             </Link>
                         ))}
@@ -86,15 +87,12 @@ export default function Header() {
 
                     <Link href="/perfil" className="text-[#6d9138] p-1 hover:bg-green-50 rounded-full transition-colors">
                         <figure className="rounded-full border-2 border-[#6d9138] flex items-center justify-center m-0 overflow-hidden w-[40px] h-[40px]">
-                            <Image
+                            <img
                                 src={user?.fotoPerfil || "/icon.png"}
                                 alt={user?.nome || 'foto de perfil'}
                                 className="w-full h-full object-cover"
-                                height={0}
-                                width={0}
-                                sizes='25dvw'
                                 onError={(e) => {
-                                    (e.target as HTMLImageElement).src = "/icon.png";
+                                    (e.currentTarget as HTMLImageElement).src = "/icon.png";
                                 }}
                             />
                         </figure>
@@ -119,12 +117,13 @@ export default function Header() {
                     <header className="flex items-center justify-between mb-8 border-b border-white/20 pb-4">
                         <section className="flex items-center gap-3">
                             <section className="w-10 h-10 rounded-full border-2 border-white overflow-hidden">
-                                <Image
+                                <img
                                     src={user?.fotoPerfil || "/icon.png"}
                                     alt="Perfil"
-                                    width={0}
-                                    height={0}
                                     className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        (e.currentTarget as HTMLImageElement).src = "/icon.png";
+                                    }}
                                 />
                             </section>
                             <span className="text-lg font-bold text-white truncate max-w-[120px]">
