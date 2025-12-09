@@ -69,12 +69,12 @@ export default function NewCultureModal({
         // === ATUALIZAR (PUT) ===
         console.log("Atualizando cultura...", payload);
         await culturaService.update(culturaAtual.id, payload as any);
-        alert("Cultura atualizada com sucesso!");
+        // alert("Cultura atualizada com sucesso!");
       } else {
         // === CRIAR (POST) ===
         console.log("Criando nova cultura...", payload);
         await culturaService.create(payload as any);
-        alert("Cultura criada com sucesso!");
+        // alert("Cultura criada com sucesso!");
       }
       
       onSuccess();
